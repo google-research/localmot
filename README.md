@@ -1,3 +1,5 @@
+This is not an officially supported Google product.
+
 # Local Metrics for Multi-Object Tracking
 
 <p align="center">Jack Valmadre, Alex Bewley, Jonathan Huang, Chen Sun, Cristian Sminchisescu, Cordelia Schmid</p>
