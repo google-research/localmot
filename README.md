@@ -2,30 +2,30 @@ This is not an officially supported Google product.
 
 # Local Metrics for Multi-Object Tracking
 
-<p align="center">Jack Valmadre, Alex Bewley, Jonathan Huang, Chen Sun, Cristian Sminchisescu, Cordelia Schmid</p>
+Jack Valmadre, Alex Bewley, Jonathan Huang, Chen Sun, Cristian Sminchisescu, Cordelia Schmid
 
-<p align="center"><strong>Google Research</strong></p>
+**Google Research**
 
 Paper: https://arxiv.org/abs/2104.02631
 
 
 ## Introduction
 
-<img src='figures/demo.png' width="500" align="right"/>
-<p align="justify">Temporally local metrics for Multi-Object Tracking. These
-metrics are obtained by restricting existing metrics based on track matching to
-a finite temporal horizon, and provide new insight into the ability of trackers
-to maintain identity over time. Moreover, the horizon parameter offers a novel,
-meaningful mechanism by which to define the relative importance of detection and
-association, a common dilemma in applications where imperfect association is
-tolerable. It is shown that the historical Average Tracking Accuracy (ATA)
-metric exhibits superior sensitivity to association, enabling its proposed local
-variant, ALTA, to capture a wide range of characteristics. In particular, ALTA
-is better equipped to identify advances in association independent of detection.
-The paper further presents an error decomposition for ATA that reveals the
-impact of four distinct error types and is equally applicable to ALTA. The
-diagnostic capabilities of ALTA are demonstrated on the MOT 2017 and Waymo Open
-Dataset benchmarks.</p>
+Metrics for Multi-Object Tracking (MOT) can be divided into _strict metrics_, which enforce a fixed, one-to-one correspondence between ground-truth and predicted tracks, and _non-strict metrics_, which award some credit for tracks that are correct in a subset of frames.
+IDF1 and ATA are examples of strict metrics, whereas MOTA and HOTA are examples of non-strict metrics.
+The type of metric which is appropriate is determined by the priorities of the application.
+While strict metrics are relatively uncontroversial, the design of a non-strict metric usually involves two disputable decisions: (i) how to quantify association error and (ii) how to combine detection and association metrics.
+
+**Local metrics** are obtained by applying an existing strict metric locally in a sliding window.
+Local metrics represent an alternative way to define a non-strict metric, where the degree of strictness (that is, the balance between detection and association) is controlled via the temporal horizon of the local window.
+This replaces the two open questions above with the need to choose a temporal horizon.
+Moreover, it provides a single family of metrics that can be used for both strict and non-strict evaluation.
+Varying the horizon parameter enables analysis of association error with respect to temporal distance.
+
+One historical weakness of metrics based on one-to-one track correspondence is their lack of transparency with respect to error type.
+That is, it can be unclear whether a reduction in overall tracking error is due to improved detection or association (or both).
+To address this, we develop a **decomposition** of overall tracking error into four components: over- and under-detection (FN det, FP det) and over- and under-association (merge, split).
+The error decomposition is equally applicable to local metrics.
 
 
 ## Demo
@@ -89,7 +89,7 @@ import numpy as np
 import pandas as pd
 ```
 
-Example using fixed horizons (frames):
+Example using fixed horizons (in frames):
 
 ```python
 horizons = [0, 10, 100, np.inf]
@@ -103,7 +103,7 @@ total_stats = sum(stats.values())
 metrics = localmot.metrics.normalize(total_stats)
 ```
 
-Example using fixed horizons (seconds):
+Example using fixed horizons (in seconds):
 
 ```python
 horizons = [0, 1, 3, 10, np.inf]
@@ -120,7 +120,7 @@ total_stats = sum(stats.values())
 metrics = localmot.metrics.normalize(total_stats)
 ```
 
-Example using full horizon range where all sequences have same length and fps:
+Example using the spanning range of horizons where all sequences have same length and fps:
 
 ```python
 num_frames = 1000
@@ -139,7 +139,7 @@ total_stats = sum(stats.values())
 metrics = localmot.metrics.normalize(total_stats)
 ```
 
-Example using full horizon range with heterogeneous sequences:
+Example using the spanning range of horizons with heterogeneous sequences:
 
 ```python
 units = 'seconds'
@@ -177,8 +177,7 @@ metrics = localmot.metrics.normalize(total_stats)
 
 ## Citation
 
-If you use these local metrics or code for your publication, please cite the
-following paper:
+If you use these local metrics or code for your publication, please cite the following paper:
 
 ```
 @article{valmadre2021local,
