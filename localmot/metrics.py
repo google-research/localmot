@@ -629,7 +629,7 @@ def normalize_diagnostics(stats):
       'track_fn_union_det',
       'track_fn_union_ass',
   ]].div(stats['gt_num_tracks'], axis=0)
-  error_gt.columns = error_gt.columns.str.replace('^track_fn_', '')
+  error_gt.columns = error_gt.columns.str.replace('^track_fn_', '', regex=True)
   # Group by cause of error.
   cause_gt = pd.DataFrame({
       'det_fn': error_gt['cover_det'],
@@ -650,7 +650,7 @@ def normalize_diagnostics(stats):
       'track_fp_union_det',
       'track_fp_union_ass',
   ]].div(stats['pr_num_tracks'], axis=0)
-  error_pr.columns = error_pr.columns.str.replace('^track_fp_', '')
+  error_pr.columns = error_pr.columns.str.replace('^track_fp_', '', regex=True)
   # Group by cause of error. (Swap FN/FP and split/merge.)
   cause_pr = pd.DataFrame({
       'det_fp': error_pr['cover_det'],
