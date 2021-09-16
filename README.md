@@ -8,6 +8,7 @@ Jack Valmadre, Alex Bewley, Jonathan Huang, Chen Sun, Cristian Sminchisescu, Cor
 
 Paper: https://arxiv.org/abs/2104.02631
 
+<img src="assets/MOT17_test_ata_vs_horizon_frames.png" alt="ata_vs_horizon_frames.pdf" width=720 />
 
 ## Introduction
 
@@ -33,10 +34,12 @@ The error decomposition is equally applicable to local metrics.
 We provide a script to evaluate predictions in
 [MOT Challenge format](https://motchallenge.net/instructions/).
 
-First set up the code:
+First set up the code and dependencies:
 
 ```bash
 git clone https://github.com/google-research/localmot
+pip install -r localmot/requirements.txt
+export PYTHONPATH="$(pwd)/localmot:$PYTHONPATH"
 ```
 
 Next download the ground-truth data:
@@ -57,10 +60,14 @@ mkdir -p data/pr/MOT17
   curl -L -o Tracktor++v2.zip -C - "https://motchallenge.net/download_results.php?shakey=b555a1f532c3d161f836fadc8d283fa2100f05c8&name=Tracktor++v2&chl=10" && \
   curl -L -o MAT.zip -C - "https://motchallenge.net/download_results.php?shakey=3af4ae73bef6ece5564ef10931cf49773631b7eb&name=MAT&chl=10" && \
   curl -L -o Fair.zip -C - "https://www.motchallenge.net/download_results.php?shakey=4a2cf604010e9994a49883db083d44ad63e8765a&name=Fair&chl=10" && \
+  curl -L -o Lif_T.zip -C - "https://motchallenge.net/download_results.php?shakey=aaffb4819ec6c7ebac66fd401953bf7b87e56936&name=Lif_T&chl=10" && \
+  curl -L -o LSST17.zip -C - "https://motchallenge.net/download_results.php?shakey=dd2c3c1819dd450538a5a57ee3f696f5ea756f7b&name=LSST17&chl=10" && \
   unzip -o -d SORT17 SORT17.zip && \
   unzip -o -d Tracktor++v2 Tracktor++v2.zip && \
   unzip -o -d MAT MAT.zip && \
-  unzip -o -d Fair Fair.zip )
+  unzip -o -d Fair Fair.zip && \
+  unzip -o -d Lif_T Lif_T.zip && \
+  unzip -o -d LSST17 LSST17.zip )
 ```
 
 To run the evaluation:
@@ -72,9 +79,13 @@ python -m localmot.scripts.eval_motchallenge \
   --out_dir=out/MOT17/train \
   --challenge=MOT17 \
   --units=frames \
-  --diagnostics \
+  --nodiagnostics \
   --plot
 ```
+
+This will generate several tables and figures in `out_dir`, including the following plot for ALTA versus horizon (in frames).
+
+<img src="assets/demo_MOT17_train_ata_vs_horizon_frames.png" alt="ata_vs_horizon_frames.pdf" width=720 />
 
 Note that the demo script caches the results for each sequence.
 Use `--ignore_cache` to ignore and overwrite the cached results.
