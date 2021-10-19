@@ -370,7 +370,7 @@ class MetricsTest(parameterized.TestCase):
       sequence_name=['no_confusion', 'with_confusion', 'split_tracks'],
       horizon=[0, 1, 3, np.inf],
   )
-  def test_decomposition_metrics(self, sequence_name, horizon):
+  def test_decomposition_ata(self, sequence_name, horizon):
     data, _ = TESTCASE_BY_NAME[sequence_name]
     stats = localmot_metrics.local_stats(
         num_frames=data['num_timesteps'],
@@ -428,6 +428,43 @@ class MetricsTest(parameterized.TestCase):
                                     metrics['ata_error_det_fp'] +
                                     metrics['ata_error_ass_split'] +
                                     metrics['ata_error_ass_merge']))
+
+  @parameterized.product(
+      sequence_name=['no_confusion', 'with_confusion', 'split_tracks'],
+      horizon=[0, 1, 3, np.inf],
+  )
+  def test_decomposition_idf1(self, sequence_name, horizon):
+    data, _ = TESTCASE_BY_NAME[sequence_name]
+    stats = localmot_metrics.local_stats(
+        num_frames=data['num_timesteps'],
+        gt_id_subset=data['gt_ids'],
+        pr_id_subset=data['tracker_ids'],
+        similarity=data['similarity_scores'],
+        horizons=[horizon],
+        with_diagnostics=True)
+    metrics = localmot_metrics.normalize(stats)
+
+    self.assertTrue(np.all(metrics >= 0))
+    self.assertTrue(np.all(metrics <= 1))
+
+    # Decomposition of IDR.
+    self.assertTrue(np.all(metrics['idr_error_det_fp'] == 0))
+    np.testing.assert_allclose(
+        1 - metrics['idr_approx'], (metrics['idr_error_det_fn'] +
+                                    metrics['idr_error_ass_split'] +
+                                    metrics['idr_error_ass_merge']))
+    # Decomposition of IDP.
+    self.assertTrue(np.all(metrics['idp_error_det_fn'] == 0))
+    np.testing.assert_allclose(
+        1 - metrics['idp_approx'], (metrics['idp_error_det_fp'] +
+                                    metrics['idp_error_ass_split'] +
+                                    metrics['idp_error_ass_merge']))
+    # Decomposition of IDF1.
+    np.testing.assert_allclose(
+        1 - metrics['idf1_approx'], (metrics['idf1_error_det_fn'] +
+                                     metrics['idf1_error_det_fp'] +
+                                     metrics['idf1_error_ass_split'] +
+                                     metrics['idf1_error_ass_merge']))
 
   @parameterized.parameters(
       ('no_confusion',),

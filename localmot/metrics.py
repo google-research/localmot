@@ -31,7 +31,8 @@ __all__ = [
     'StatsEvaluator',
     'local_stats',
     'normalize',
-    'normalize_diagnostics',
+    'normalize_diagnostics_ata',
+    'normalize_diagnostics_idf1',
 ]
 
 import collections
@@ -180,7 +181,7 @@ class StatsEvaluator:
       # Compute diagnostics for full sequence: take sum over time axis.
       match_counts = {k: v.sum(axis=-1)
                       for k, v in self.match_indicators.items()}
-      stats.update(_diagnostic_stats_from_overlap_counts(
+      stats.update(_diagnostic_stats_from_match_counts(
           gt_num_is_present=gt_num_is_present,
           pr_num_is_present=pr_num_is_present,
           match_pairs=self.match_pairs,
@@ -228,7 +229,7 @@ class StatsEvaluator:
         match_counts = {k: cumsum[match_mask, b] - cumsum[match_mask, a]
                         for k, cumsum in self.match_cumsums.items()}
         # Compute diagnostics for this interval using per-frame matching.
-        curr_interval_stats.update(_diagnostic_stats_from_overlap_counts(
+        curr_interval_stats.update(_diagnostic_stats_from_match_counts(
             gt_num_is_present=gt_num_is_present[gt_mask],
             pr_num_is_present=pr_num_is_present[pr_mask],
             match_pairs=_reindex_pairs(gt_subset, pr_subset,
@@ -417,7 +418,7 @@ def _stats_from_overlap_counts(
   return sums
 
 
-def _diagnostic_stats_from_overlap_counts(
+def _diagnostic_stats_from_match_counts(
     gt_num_is_present,
     pr_num_is_present,
     match_pairs,
@@ -471,13 +472,12 @@ def _diagnostic_stats_from_overlap_counts(
   sums['det_tp'] = np.sum(match_num_occurs)
   # Find optimal track correspondence using match instead of overlap.
   match_pair_approx_track_tp = match_num_occurs / match_num_either_is_present
-  approx_track_tp_matrix = _make_dense(
-      [num_gt, num_pr],
-      (match_pairs[:, 0], match_pairs[:, 1]),
-      match_pair_approx_track_tp)
+  approx_track_tp_matrix = _make_dense([num_gt, num_pr],
+                                       (match_pairs[:, 0], match_pairs[:, 1]),
+                                       match_pair_approx_track_tp)
   opt_pairs = util.solve_assignment(-approx_track_tp_matrix, exclude_zero=True)
-  sums['track_tp_approx'] = (
-      approx_track_tp_matrix[opt_pairs[:, 0], opt_pairs[:, 1]].sum())
+  sums['track_tp_approx'] = approx_track_tp_matrix[opt_pairs[:, 0],
+                                                   opt_pairs[:, 1]].sum()
 
   # Measure fraction of gt/pr track instead of fraction of union.
   num_match_matrix = _make_dense([num_gt, num_pr],
@@ -555,6 +555,25 @@ def _diagnostic_stats_from_overlap_counts(
   sums['track_fp_union_det'] = np.sum(opt_pr_err_union_det)
   sums['track_fn_union_ass'] = np.sum(opt_gt_err_union_ass)
   sums['track_fp_union_ass'] = np.sum(opt_pr_err_union_ass)
+
+  # IDF1 decomposition.
+  # Find optimal track correspondence using match instead of overlap.
+  approx_idtp_matrix = _make_dense([num_gt, num_pr],
+                                   (match_pairs[:, 0], match_pairs[:, 1]),
+                                   match_num_occurs)
+  idtp_pairs = util.solve_assignment(-approx_idtp_matrix, exclude_zero=True)
+  sums['idtp_approx'] = approx_idtp_matrix[idtp_pairs[:, 0],
+                                           idtp_pairs[:, 1]].sum()
+  sums['gt_max'] = gt_max_match.sum()
+  sums['pr_max'] = pr_max_match.sum()
+  sums['idfn_det'] = gt_num_is_present.sum() - sums['det_tp']
+  sums['idfp_det'] = pr_num_is_present.sum() - sums['det_tp']
+  sums['idfn_ass_split'] = sums['det_tp'] - sums['gt_max']
+  sums['idfn_ass_merge'] = sums['gt_max'] - sums['idtp_approx']
+  # Swap gt/pr, fp/fn, merge/split.
+  sums['idfp_ass_merge'] = sums['det_tp'] - sums['pr_max']
+  sums['idfp_ass_split'] = sums['pr_max'] - sums['idtp_approx']
+
   return sums
 
 
@@ -586,14 +605,16 @@ def normalize(stats):
 
   # Compute normalized diagnostics if present.
   if 'track_tp_approx' in stats:
-    metrics = metrics.join(normalize_diagnostics(stats))
+    metrics = metrics.join(normalize_diagnostics_ata(stats))
+  if 'idtp_approx' in stats:
+    metrics = metrics.join(normalize_diagnostics_idf1(stats))
 
   if squeeze:
     metrics = metrics.squeeze(axis=0)
   return metrics
 
 
-def normalize_diagnostics(stats):
+def normalize_diagnostics_ata(stats):
   """Returns pd.DataFrame or pd.Series of diagnostic metrics from stats."""
   squeeze = False
   if isinstance(stats, pd.Series):
@@ -654,13 +675,58 @@ def normalize_diagnostics(stats):
   error_pr.columns = error_pr.columns.str.replace('^track_fp_', '', regex=True)
   # Group by cause of error. (Swap FN/FP and split/merge.)
   cause_pr = pd.DataFrame({
-      'det_fp': error_pr['cover_det'],
       'det_fn': error_pr['union_det'],
-      'ass_merge': error_pr['cover_ass_indep'],
+      'det_fp': error_pr['cover_det'],
       'ass_split': error_pr['cover_ass_joint'] + error_pr['union_ass'],
+      'ass_merge': error_pr['cover_ass_indep'],
   })
   metrics = metrics.join(error_pr.add_prefix('atp_error_'))
   metrics = metrics.join(cause_pr.add_prefix('atp_error_'))
+
+  if squeeze:
+    metrics = metrics.squeeze(axis=0)
+  return metrics
+
+
+def normalize_diagnostics_idf1(stats):
+  """Returns pd.DataFrame or pd.Series of diagnostic metrics from stats."""
+  squeeze = False
+  if isinstance(stats, pd.Series):
+    # Create trivial DataFrame with single row.
+    stats = pd.DataFrame.from_records([stats])
+    squeeze = True
+  assert isinstance(stats, pd.DataFrame)
+
+  metrics = pd.DataFrame(index=stats.index)
+  metrics['idf1_approx'] = stats['idtp_approx'] / (0.5 * (
+      stats['gt_num_is_present'] + stats['pr_num_is_present']))
+  metrics['idr_approx'] = stats['idtp_approx'] / stats['gt_num_is_present']
+  metrics['idp_approx'] = stats['idtp_approx'] / stats['pr_num_is_present']
+
+  error = pd.DataFrame(index=stats.index)
+  error['det_fn'] = stats['idfn_det']
+  error['det_fp'] = stats['idfp_det']
+  error['ass_split'] = stats['idfn_ass_split'] + stats['idfp_ass_split']
+  error['ass_merge'] = stats['idfn_ass_merge'] + stats['idfp_ass_merge']
+  error = error.div(stats['gt_num_is_present'] + stats['pr_num_is_present'],
+                    axis=0)
+  metrics = metrics.join(error.add_prefix('idf1_error_'))
+
+  error_gt = pd.DataFrame(index=stats.index)
+  error_gt['det_fn'] = stats['idfn_det']
+  error_gt['det_fp'] = 0.
+  error_gt['ass_split'] = stats['idfn_ass_split']
+  error_gt['ass_merge'] = stats['idfn_ass_merge']
+  error_gt = error_gt.div(stats['gt_num_is_present'], axis=0)
+  metrics = metrics.join(error_gt.add_prefix('idr_error_'))
+
+  error_pr = pd.DataFrame(index=stats.index)
+  error_pr['det_fn'] = 0.
+  error_pr['det_fp'] = stats['idfp_det']
+  error_pr['ass_split'] = stats['idfp_ass_split']
+  error_pr['ass_merge'] = stats['idfp_ass_merge']
+  error_pr = error_pr.div(stats['pr_num_is_present'], axis=0)
+  metrics = metrics.join(error_pr.add_prefix('idp_error_'))
 
   if squeeze:
     metrics = metrics.squeeze(axis=0)
