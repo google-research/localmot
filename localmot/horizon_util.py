@@ -70,7 +70,7 @@ def int_frame_horizon(horizons, num_frames, time_scale=1):
   horizons = np.asarray(horizons)
   assert num_frames == int(num_frames)
   frames = np.clip(floor_prec(horizons * time_scale), 0, int(num_frames) - 1)
-  return frames.astype(np.int)
+  return frames.astype(int)
 
 
 def horizon_range(num_frames, time_scale=1, coeffs=(1, 2, 5), base=10):

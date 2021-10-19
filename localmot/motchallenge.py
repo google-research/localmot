@@ -131,13 +131,13 @@ def remove_ignored(num_frames, gt_data, pr_data, iou_threshold,
     overlap_matrix = (iou_matrix >= iou_threshold)
     match_pairs = util.match_detections(overlap_matrix, iou_matrix)
     # Remove annotations in any ignored category.
-    gt_exclude = np.zeros(len(gt_curr), np.bool)
+    gt_exclude = np.zeros(len(gt_curr), dtype=bool)
     if np.size(ignore_categories):
       gt_exclude |= np.isin(gt_curr[:, CATEGORY_COLUMN], ignore_categories)
     if vis_threshold is not None:
       gt_exclude |= ~(gt_curr[:, VISIBILITY_COLUMN] >= vis_threshold)
     # Exclude any predictions that match to excluded annotations.
-    pr_exclude = np.zeros(len(pr_curr), np.bool)
+    pr_exclude = np.zeros(len(pr_curr), dtype=bool)
     pr_exclude[match_pairs[:, 1]] = gt_exclude[match_pairs[:, 0]]
     gt_data_in_frame[t] = gt_curr[~gt_exclude]
     pr_data_in_frame[t] = pr_curr[~pr_exclude]

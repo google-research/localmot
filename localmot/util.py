@@ -83,7 +83,7 @@ def solve_assignment(weights, exclude_zero=False):
   rs, cs = scipy.optimize.linear_sum_assignment(weights)
   # Ensure that shape is correct if empty.
   if not rs.size:
-    return np.empty([0, 2], dtype=np.int)
+    return np.empty([0, 2], dtype=int)
   pairs = np.stack([rs, cs], axis=-1)
   if exclude_zero:
     is_nonzero = ~(weights[pairs[:, 0], pairs[:, 1]] == 0)

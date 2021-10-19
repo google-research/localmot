@@ -109,8 +109,8 @@ def local_stats_at_int_horizons(
   horizons = np.atleast_1d(np.asarray(horizons))
   assert np.all(horizons >= 0)
   assert np.all(horizons < np.inf)
-  assert np.all(horizons == horizons.astype(np.int))
-  horizons = horizons.astype(np.int)
+  assert np.all(horizons == horizons.astype(int))
+  horizons = horizons.astype(int)
   horizons = np.unique(horizons)
   evaluator = StatsEvaluator(
       num_frames, gt_id_subset, pr_id_subset, similarity,
@@ -248,11 +248,12 @@ def _indicator_dicts(num_frames, gt_id_subset, pr_id_subset, similarity,
   gt_ids = sorted(set.union(*map(set, gt_id_subset)))
   pr_ids = sorted(set.union(*map(set, pr_id_subset)))
   # Construct indicator time-series for presence, overlap, per-frame match.
-  gt_is_present = {gt_id: np.zeros(num_frames, np.bool) for gt_id in gt_ids}
-  pr_is_present = {pr_id: np.zeros(num_frames, np.bool) for pr_id in pr_ids}
+  gt_is_present = {gt_id: np.zeros(num_frames, dtype=bool) for gt_id in gt_ids}
+  pr_is_present = {pr_id: np.zeros(num_frames, dtype=bool) for pr_id in pr_ids}
   overlap_occurs = collections.defaultdict(
-      lambda: np.zeros(num_frames, np.bool))
-  match_occurs = collections.defaultdict(lambda: np.zeros(num_frames, np.bool))
+      lambda: np.zeros(num_frames, dtype=bool))
+  match_occurs = collections.defaultdict(
+      lambda: np.zeros(num_frames, dtype=bool))
   for t in range(num_frames):
     gt_curr_ids = gt_id_subset[t]
     pr_curr_ids = pr_id_subset[t]
@@ -296,16 +297,16 @@ def _indicator_arrays(num_frames, gt_id_subset, pr_id_subset, similarity,
 
   gt_is_present = _stack_maybe_empty(
       [gt_is_present[gt_id] for gt_id in gt_ids],
-      out=np.empty([len(gt_ids), num_frames], np.bool))
+      out=np.empty([len(gt_ids), num_frames], dtype=bool))
   pr_is_present = _stack_maybe_empty(
       [pr_is_present[pr_id] for pr_id in pr_ids],
-      out=np.empty([len(pr_ids), num_frames], np.bool))
+      out=np.empty([len(pr_ids), num_frames], dtype=bool))
   overlap_occurs = _stack_maybe_empty(
       [overlap_occurs[pair] for pair in overlap_pairs],
-      out=np.empty([len(overlap_pairs), num_frames], np.bool))
+      out=np.empty([len(overlap_pairs), num_frames], dtype=bool))
   match_occurs = _stack_maybe_empty(
       [match_occurs[pair] for pair in match_pairs],
-      out=np.empty([len(match_pairs), num_frames], np.bool))
+      out=np.empty([len(match_pairs), num_frames], dtype=bool))
   # Replace IDs with zero-based integers.
   overlap_pairs = _reindex_pairs(gt_ids, pr_ids, overlap_pairs)
   match_pairs = _reindex_pairs(gt_ids, pr_ids, match_pairs)
@@ -318,9 +319,9 @@ def _overlap_indicators(gt_is_present, pr_is_present,
                         overlap_pairs, overlap_occurs):
   """Returns indicators that are sufficient to describe track overlaps."""
   # Ensure boolean type to use bitwise operators (&, |, ~).
-  gt_is_present = gt_is_present.astype(np.bool)
-  pr_is_present = pr_is_present.astype(np.bool)
-  overlap_occurs = overlap_occurs.astype(np.bool)
+  gt_is_present = gt_is_present.astype(bool)
+  pr_is_present = pr_is_present.astype(bool)
+  overlap_occurs = overlap_occurs.astype(bool)
   # Construct dict of indicator arrays required to compute metrics.
   # Final axis of all arrays is time.
   overlap_indicators = {}
@@ -336,12 +337,12 @@ def _match_indicators(gt_is_present, pr_is_present,
   """Returns indicators that are sufficient to describe track matches."""
   num_gt, num_frames = gt_is_present.shape
   num_pr, _ = pr_is_present.shape
-  match_occurs = match_occurs.astype(np.bool)
+  match_occurs = match_occurs.astype(bool)
   match_indicators = {}
   match_indicators['occurs'] = match_occurs
   # Add indicators that are based on per-frame matches.
-  gt_has_some_match = np.zeros([num_gt, num_frames], dtype=np.bool)
-  pr_has_some_match = np.zeros([num_pr, num_frames], dtype=np.bool)
+  gt_has_some_match = np.zeros([num_gt, num_frames], dtype=bool)
+  pr_has_some_match = np.zeros([num_pr, num_frames], dtype=bool)
   for (gt_id, pr_id), pair_match_occurs in zip(match_pairs, match_occurs):
     gt_has_some_match[gt_id] |= pair_match_occurs
     pr_has_some_match[pr_id] |= pair_match_occurs
@@ -518,7 +519,7 @@ def _diagnostic_stats_from_overlap_counts(
   # Find `union` component.
   pair_to_match_index = dict(zip(map(tuple, match_pairs), itertools.count()))
   opt_to_match_index = np.array(
-      [pair_to_match_index[tuple(pair)] for pair in opt_pairs], np.int)
+      [pair_to_match_index[tuple(pair)] for pair in opt_pairs], dtype=int)
   opt_num_either_is_present = match_num_either_is_present[opt_to_match_index]
   opt_gt_acc_cover = opt_num_match / opt_num_gt_is_present
   opt_pr_acc_cover = opt_num_match / opt_num_pr_is_present
@@ -669,12 +670,12 @@ def normalize_diagnostics(stats):
 def _reindex_pairs(gt_ids, pr_ids, pairs):
   """Re-indexes subsets of integers as consecutive integers from 0."""
   if not len(pairs):  # pylint: disable=g-explicit-length-test
-    return np.empty([0, 2], dtype=np.int)
+    return np.empty([0, 2], dtype=int)
   gt_map = dict(zip(gt_ids, itertools.count()))
   pr_map = dict(zip(pr_ids, itertools.count()))
   # Will raise KeyError if id was not present.
   return np.array([(gt_map[gt_id], pr_map[pr_id]) for gt_id, pr_id in pairs],
-                  dtype=np.int)
+                  dtype=int)
 
 
 def _cumsum_with_zero(x, axis):
