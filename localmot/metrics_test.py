@@ -56,8 +56,8 @@ def testcase_no_confusion():
           'pr_num_tracks': 2,
           'gt_num_is_present': (4 + 6 + 5 + 4 + 2) / 5,
           'pr_num_is_present': (4 + 6 + 6 + 5 + 3) / 5,
-          'track_tp': ((1) + (2 / 3) + (1 / 3 + 1 / 3) + (2 / 3) + (1)) / 5,
-          'ata': (((1) + (2 / 3) + (1 / 3 + 1 / 3) + (2 / 3) + (1)) /
+          'track_tp': ((1) + (2 / 4) + (1 / 5 + 1 / 4) + (2 / 4) + (1)) / 5,
+          'ata': (((1) + (2 / 4) + (1 / 5 + 1 / 4) + (2 / 4) + (1)) /
                   (0.5 * ((2 + 2 + 2 + 2 + 1) +
                           (2 + 2 + 2 + 2 + 2)))),
           'idtp': (2 + 2 + 2 + 2 + 2) / 5,
@@ -70,8 +70,8 @@ def testcase_no_confusion():
           'pr_num_tracks': 2,
           'gt_num_is_present': 8,
           'pr_num_is_present': 9,
-          'track_tp': 2 / 5 + 2 / 4,
-          'ata': (2 / 5 + 2 / 4) / 2,
+          'track_tp': 2 / 8 + 2 / 5,
+          'ata': (2 / 8 + 2 / 5) / 2,
           'idtp': 4,
           'idf1': 4 / (0.5 * (8 + 9)),
       },
@@ -124,8 +124,8 @@ def testcase_with_confusion():
           'pr_num_tracks': 2,
           'gt_num_is_present': 8,
           'pr_num_is_present': 9,
-          'track_tp': 2 / 5 + 2 / 4,
-          'ata': (2 / 5 + 2 / 4) / 2,
+          'track_tp': 2 / 8 + 2 / 5,
+          'ata': (2 / 8 + 2 / 5) / 2,
           'idtp': 4,
           'idf1': 4 / (0.5 * (8 + 9)),
       },
@@ -349,16 +349,12 @@ class MetricsTest(parameterized.TestCase):
                                  stats['track_fp_union']))
     np.testing.assert_allclose(
         stats['track_fn_cover'], (stats['track_fn_cover_det'] +
-                                  stats['track_fn_cover_ass']))
+                                  stats['track_fn_cover_max'] +
+                                  stats['track_fn_cover_opt']))
     np.testing.assert_allclose(
         stats['track_fp_cover'], (stats['track_fp_cover_det'] +
-                                  stats['track_fp_cover_ass']))
-    np.testing.assert_allclose(
-        stats['track_fn_cover_ass'], (stats['track_fn_cover_ass_indep'] +
-                                      stats['track_fn_cover_ass_joint']))
-    np.testing.assert_allclose(
-        stats['track_fp_cover_ass'], (stats['track_fp_cover_ass_indep'] +
-                                      stats['track_fp_cover_ass_joint']))
+                                  stats['track_fp_cover_max'] +
+                                  stats['track_fp_cover_opt']))
     np.testing.assert_allclose(
         stats['track_fn_union'], (stats['track_fn_union_det'] +
                                   stats['track_fn_union_ass']))
@@ -390,10 +386,8 @@ class MetricsTest(parameterized.TestCase):
                                     metrics['atr_error_union']))
     np.testing.assert_allclose(
         metrics['atr_error_cover'], (metrics['atr_error_cover_det'] +
-                                     metrics['atr_error_cover_ass']))
-    np.testing.assert_allclose(
-        metrics['atr_error_cover_ass'], (metrics['atr_error_cover_ass_indep'] +
-                                         metrics['atr_error_cover_ass_joint']))
+                                     metrics['atr_error_cover_max'] +
+                                     metrics['atr_error_cover_opt']))
     np.testing.assert_allclose(
         metrics['atr_error_union'], (metrics['atr_error_union_det'] +
                                      metrics['atr_error_union_ass']))
@@ -409,10 +403,8 @@ class MetricsTest(parameterized.TestCase):
                                     metrics['atp_error_union']))
     np.testing.assert_allclose(
         metrics['atp_error_cover'], (metrics['atp_error_cover_det'] +
-                                     metrics['atp_error_cover_ass']))
-    np.testing.assert_allclose(
-        metrics['atp_error_cover_ass'], (metrics['atp_error_cover_ass_indep'] +
-                                         metrics['atp_error_cover_ass_joint']))
+                                     metrics['atp_error_cover_max'] +
+                                     metrics['atp_error_cover_opt']))
     np.testing.assert_allclose(
         metrics['atp_error_union'], (metrics['atp_error_union_det'] +
                                      metrics['atp_error_union_ass']))
