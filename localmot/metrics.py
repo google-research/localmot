@@ -136,55 +136,46 @@ class StatsEvaluator:
          similarity_threshold=similarity_threshold,
          with_diagnostics=self.with_diagnostics)
 
-    # Obtain indicators that are sufficient for computation of stats.
-    overlap_indicators = _overlap_indicators(
-        gt_is_present, pr_is_present, overlap_pairs, overlap_occurs)
     # Pre-compute cumulative sums of indicators for use by all horizons.
     cumsum_gt_is_present = _cumsum_with_zero(gt_is_present, axis=-1)
     cumsum_pr_is_present = _cumsum_with_zero(pr_is_present, axis=-1)
-    overlap_cumsums = {k: _cumsum_with_zero(indicator, axis=-1)
-                       for k, indicator in overlap_indicators.items()}
+    cumsum_overlap_occurs = _cumsum_with_zero(overlap_occurs, axis=-1)
     if self.with_diagnostics:
-      match_indicators = _match_indicators(
-          gt_is_present, pr_is_present, match_pairs, match_occurs)
-      match_cumsums = {k: _cumsum_with_zero(indicator, axis=-1)
-                       for k, indicator in match_indicators.items()}
+      cumsum_match_occurs = _cumsum_with_zero(match_occurs, axis=-1)
 
     self.gt_is_present = gt_is_present
     self.pr_is_present = pr_is_present
     self.cumsum_gt_is_present = cumsum_gt_is_present
     self.cumsum_pr_is_present = cumsum_pr_is_present
     self.overlap_pairs = overlap_pairs
-    self.overlap_indicators = overlap_indicators
-    self.overlap_cumsums = overlap_cumsums
+    self.overlap_occurs = overlap_occurs
+    self.cumsum_overlap_occurs = cumsum_overlap_occurs
     if self.with_diagnostics:
       self.match_pairs = match_pairs
-      self.match_indicators = match_indicators
-      self.match_cumsums = match_cumsums
+      self.match_occurs = match_occurs
+      self.cumsum_match_occurs = cumsum_match_occurs
 
   def strict(self):
     """Computes stats for strict."""
     # Compute metrics for full sequence: take sum over time axis.
     gt_num_is_present = self.gt_is_present.sum(axis=-1)
     pr_num_is_present = self.pr_is_present.sum(axis=-1)
-    overlap_counts = {k: v.sum(axis=-1)
-                      for k, v in self.overlap_indicators.items()}
+    overlap_num_occurs = self.overlap_occurs.sum(axis=-1)
     stats = _stats_from_overlap_counts(
         num_frames=self.num_frames,
         gt_num_is_present=gt_num_is_present,
         pr_num_is_present=pr_num_is_present,
         overlap_pairs=self.overlap_pairs,
-        **{'overlap_num_' + k: v for k, v in overlap_counts.items()})
+        overlap_num_occurs=overlap_num_occurs)
 
     if self.with_diagnostics:
       # Compute diagnostics for full sequence: take sum over time axis.
-      match_counts = {k: v.sum(axis=-1)
-                      for k, v in self.match_indicators.items()}
-      stats.update(_diagnostic_stats_from_overlap_counts(
+      match_num_occurs = self.match_occurs.sum(axis=-1)
+      stats.update(_diagnostic_stats_from_match_counts(
           gt_num_is_present=gt_num_is_present,
           pr_num_is_present=pr_num_is_present,
           match_pairs=self.match_pairs,
-          **{'match_num_' + k: v for k, v in match_counts.items()}))
+          match_num_occurs=match_num_occurs))
 
     stats = pd.Series(stats)
     return stats
@@ -207,11 +198,8 @@ class StatsEvaluator:
       gt_subset, = gt_mask.nonzero()
       pr_subset, = pr_mask.nonzero()
 
-      # Take sums over interval.
       overlap_mask = np.logical_and(gt_mask[self.overlap_pairs[:, 0]],
                                     pr_mask[self.overlap_pairs[:, 1]])
-      overlap_counts = {k: cumsum[overlap_mask, b] - cumsum[overlap_mask, a]
-                        for k, cumsum in self.overlap_cumsums.items()}
       # Compute metrics for this interval using overlap counts.
       curr_interval_stats = _stats_from_overlap_counts(
           num_frames=(b - a),
@@ -219,21 +207,20 @@ class StatsEvaluator:
           pr_num_is_present=pr_num_is_present[pr_mask],
           overlap_pairs=_reindex_pairs(gt_subset, pr_subset,
                                        self.overlap_pairs[overlap_mask]),
-          **{'overlap_num_' + k: v for k, v in overlap_counts.items()})
+          overlap_num_occurs=(self.cumsum_overlap_occurs[overlap_mask, b] -
+                              self.cumsum_overlap_occurs[overlap_mask, a]))
 
       if self.with_diagnostics:
-        # Take sums over interval.
         match_mask = np.logical_and(gt_mask[self.match_pairs[:, 0]],
                                     pr_mask[self.match_pairs[:, 1]])
-        match_counts = {k: cumsum[match_mask, b] - cumsum[match_mask, a]
-                        for k, cumsum in self.match_cumsums.items()}
         # Compute diagnostics for this interval using per-frame matching.
-        curr_interval_stats.update(_diagnostic_stats_from_overlap_counts(
+        curr_interval_stats.update(_diagnostic_stats_from_match_counts(
             gt_num_is_present=gt_num_is_present[gt_mask],
             pr_num_is_present=pr_num_is_present[pr_mask],
             match_pairs=_reindex_pairs(gt_subset, pr_subset,
                                        self.match_pairs[match_mask]),
-            **{'match_num_' + k: v for k, v in match_counts.items()}))
+            match_num_occurs=(self.cumsum_match_occurs[match_mask, b] -
+                              self.cumsum_match_occurs[match_mask, a])))
       interval_stats[t] = curr_interval_stats
 
     # Take mean over all windows.
@@ -315,61 +302,12 @@ def _indicator_arrays(num_frames, gt_id_subset, pr_id_subset, similarity,
           match_pairs, match_occurs)
 
 
-def _overlap_indicators(gt_is_present, pr_is_present,
-                        overlap_pairs, overlap_occurs):
-  """Returns indicators that are sufficient to describe track overlaps."""
-  # Ensure boolean type to use bitwise operators (&, |, ~).
-  gt_is_present = gt_is_present.astype(bool)
-  pr_is_present = pr_is_present.astype(bool)
-  overlap_occurs = overlap_occurs.astype(bool)
-  # Construct dict of indicator arrays required to compute metrics.
-  # Final axis of all arrays is time.
-  overlap_indicators = {}
-  overlap_indicators['occurs'] = overlap_occurs
-  overlap_indicators['either_is_present'] = np.logical_or(
-      gt_is_present[overlap_pairs[:, 0], :],
-      pr_is_present[overlap_pairs[:, 1], :])
-  return overlap_indicators
-
-
-def _match_indicators(gt_is_present, pr_is_present,
-                      match_pairs, match_occurs):
-  """Returns indicators that are sufficient to describe track matches."""
-  num_gt, num_frames = gt_is_present.shape
-  num_pr, _ = pr_is_present.shape
-  match_occurs = match_occurs.astype(bool)
-  match_indicators = {}
-  match_indicators['occurs'] = match_occurs
-  # Add indicators that are based on per-frame matches.
-  gt_has_some_match = np.zeros([num_gt, num_frames], dtype=bool)
-  pr_has_some_match = np.zeros([num_pr, num_frames], dtype=bool)
-  for (gt_id, pr_id), pair_match_occurs in zip(match_pairs, match_occurs):
-    gt_has_some_match[gt_id] |= pair_match_occurs
-    pr_has_some_match[pr_id] |= pair_match_occurs
-  match_gt_is_present = gt_is_present[match_pairs[:, 0]]
-  match_pr_is_present = pr_is_present[match_pairs[:, 1]]
-  match_gt_is_alone = (match_gt_is_present & ~match_pr_is_present)
-  match_pr_is_alone = (match_pr_is_present & ~match_gt_is_present)
-  match_indicators['either_is_present'] = np.logical_or(
-      match_gt_is_present, match_pr_is_present)
-  match_indicators['gt_is_alone_with_match'] = (
-      match_gt_is_alone & gt_has_some_match[match_pairs[:, 0]])
-  match_indicators['gt_is_alone_sans_match'] = (
-      match_gt_is_alone & ~gt_has_some_match[match_pairs[:, 0]])
-  match_indicators['pr_is_alone_with_match'] = (
-      match_pr_is_alone & pr_has_some_match[match_pairs[:, 1]])
-  match_indicators['pr_is_alone_sans_match'] = (
-      match_pr_is_alone & ~pr_has_some_match[match_pairs[:, 1]])
-  return match_indicators
-
-
 def _stats_from_overlap_counts(
     num_frames,
     gt_num_is_present,
     pr_num_is_present,
     overlap_pairs,
-    overlap_num_occurs,
-    overlap_num_either_is_present):
+    overlap_num_occurs):
   """Obtains statistics for IDF1 and ATA given number of frames that overlap.
 
   Args:
@@ -380,8 +318,6 @@ def _stats_from_overlap_counts(
       Indices should be in [0, num_gt) and [0, num_pr) respectively.
     overlap_num_occurs: Integer array of shape [num_pairs].
       Number of frames where the pair of tracks satisfy overlap criterion.
-    overlap_num_either_is_present: Integer array of shape [num_pairs].
-      Number of frames where at least one track in the pair is present.
 
   Returns:
     Dict that maps field name to value.
@@ -390,22 +326,23 @@ def _stats_from_overlap_counts(
   num_gt, = gt_num_is_present.shape
   num_pr, = pr_num_is_present.shape
   # Ensure counts are floats for division.
+  gt_num_is_present = gt_num_is_present.astype(np.float64)
+  pr_num_is_present = pr_num_is_present.astype(np.float64)
   overlap_num_occurs = overlap_num_occurs.astype(np.float64)
-  overlap_num_either_is_present = (
-      overlap_num_either_is_present.astype(np.float64))
 
   # Find correspondence for ATA.
-  overlap_pair_track_tp = overlap_num_occurs / overlap_num_either_is_present
-  track_tp_matrix = _make_dense([num_gt, num_pr],
-                                (overlap_pairs[:, 0], overlap_pairs[:, 1]),
-                                overlap_pair_track_tp)
+  overlap_gt, overlap_pr = overlap_pairs[:, 0], overlap_pairs[:, 1]
+  overlap_union = (gt_num_is_present[overlap_gt] + pr_num_is_present[overlap_pr]
+                   - overlap_num_occurs)
+  overlap_pair_track_tp = overlap_num_occurs / overlap_union
+  track_tp_matrix = _make_dense(
+      [num_gt, num_pr], (overlap_gt, overlap_pr), overlap_pair_track_tp)
   argmax = util.solve_assignment(-track_tp_matrix, exclude_zero=True)
   sums['track_tp'] = track_tp_matrix[argmax[:, 0], argmax[:, 1]].sum()
 
   # Find correspondence for IDF1.
-  num_overlap_matrix = _make_dense([num_gt, num_pr],
-                                   (overlap_pairs[:, 0], overlap_pairs[:, 1]),
-                                   overlap_num_occurs)
+  num_overlap_matrix = _make_dense(
+      [num_gt, num_pr], (overlap_gt, overlap_pr), overlap_num_occurs)
   argmax = util.solve_assignment(-num_overlap_matrix, exclude_zero=True)
   sums['idtp'] = num_overlap_matrix[argmax[:, 0], argmax[:, 1]].sum()
 
@@ -417,16 +354,11 @@ def _stats_from_overlap_counts(
   return sums
 
 
-def _diagnostic_stats_from_overlap_counts(
+def _diagnostic_stats_from_match_counts(
     gt_num_is_present,
     pr_num_is_present,
     match_pairs,
-    match_num_occurs,
-    match_num_either_is_present,
-    match_num_gt_is_alone_with_match,
-    match_num_pr_is_alone_with_match,
-    match_num_gt_is_alone_sans_match,
-    match_num_pr_is_alone_sans_match):
+    match_num_occurs):
   """Obtains stats for diagnostics from independent per-frame correspondence.
 
   Args:
@@ -436,16 +368,6 @@ def _diagnostic_stats_from_overlap_counts(
       Indices should be in [0, num_gt) and [0, num_pr) respectively.
     match_num_occurs: Integer array of shape [num_pairs].
       Number of frames where the pair of tracks are matched.
-    match_num_either_is_present: Integer array of shape [num_pairs].
-      Number of frames where at least one track in the pair is present.
-    match_num_gt_is_alone_with_match: Integer array of shape [num_pairs].
-      Number of frames where gt is present and matched to a different pr.
-    match_num_pr_is_alone_with_match: Integer array of shape [num_pairs].
-      Number of frames where pr is present and matched to a different gt.
-    match_num_gt_is_alone_sans_match: Integer array of shape [num_pairs].
-      Number of frames where gt is present and not matched to any pr.
-    match_num_pr_is_alone_sans_match: Integer array of shape [num_pairs].
-      Number of frames where pr is present and not matched to any gt.
 
   Returns:
     Dict that maps field name to value.
@@ -458,31 +380,23 @@ def _diagnostic_stats_from_overlap_counts(
   gt_num_is_present = gt_num_is_present.astype(np.float64)
   pr_num_is_present = pr_num_is_present.astype(np.float64)
   match_num_occurs = match_num_occurs.astype(np.float64)
-  match_num_either_is_present = match_num_either_is_present.astype(np.float64)
-  match_num_gt_is_alone_with_match = (
-      match_num_gt_is_alone_with_match.astype(np.float64))
-  match_num_pr_is_alone_with_match = (
-      match_num_pr_is_alone_with_match.astype(np.float64))
-  match_num_gt_is_alone_sans_match = (
-      match_num_gt_is_alone_sans_match.astype(np.float64))
-  match_num_pr_is_alone_sans_match = (
-      match_num_pr_is_alone_sans_match.astype(np.float64))
+
+  match_gt, match_pr = match_pairs[:, 0], match_pairs[:, 1]
+  match_union = (gt_num_is_present[match_gt] + pr_num_is_present[match_pr]
+                 - match_num_occurs)
 
   sums['det_tp'] = np.sum(match_num_occurs)
   # Find optimal track correspondence using match instead of overlap.
-  match_pair_approx_track_tp = match_num_occurs / match_num_either_is_present
+  match_pair_approx_track_tp = match_num_occurs / match_union
   approx_track_tp_matrix = _make_dense(
-      [num_gt, num_pr],
-      (match_pairs[:, 0], match_pairs[:, 1]),
-      match_pair_approx_track_tp)
+      [num_gt, num_pr], (match_gt, match_pr), match_pair_approx_track_tp)
   opt_pairs = util.solve_assignment(-approx_track_tp_matrix, exclude_zero=True)
-  sums['track_tp_approx'] = (
-      approx_track_tp_matrix[opt_pairs[:, 0], opt_pairs[:, 1]].sum())
+  opt_gt, opt_pr = opt_pairs[:, 0], opt_pairs[:, 1]
+  sums['track_tp_approx'] = approx_track_tp_matrix[opt_gt, opt_pr].sum()
 
   # Measure fraction of gt/pr track instead of fraction of union.
-  num_match_matrix = _make_dense([num_gt, num_pr],
-                                 (match_pairs[:, 0], match_pairs[:, 1]),
-                                 match_num_occurs)
+  num_match_matrix = _make_dense(
+      [num_gt, num_pr], (match_gt, match_pairs[:, 1]), match_num_occurs)
   gt_sum_match = num_match_matrix.sum(axis=1)
   pr_sum_match = num_match_matrix.sum(axis=0)
   gt_max_match = num_match_matrix.max(axis=1, initial=0)
@@ -491,70 +405,36 @@ def _diagnostic_stats_from_overlap_counts(
   sums['pr_frac_det'] = np.sum(pr_sum_match / pr_num_is_present)
   sums['gt_frac_max'] = np.sum(gt_max_match / gt_num_is_present)
   sums['pr_frac_max'] = np.sum(pr_max_match / pr_num_is_present)
-  opt_num_match = num_match_matrix[opt_pairs[:, 0], opt_pairs[:, 1]]
-  opt_num_gt_is_present = gt_num_is_present[opt_pairs[:, 0]]
-  opt_num_pr_is_present = pr_num_is_present[opt_pairs[:, 1]]
-  gt_opt_match = _make_dense([num_gt], opt_pairs[:, 0], opt_num_match)
-  pr_opt_match = _make_dense([num_pr], opt_pairs[:, 1], opt_num_match)
-  sums['gt_frac_opt'] = np.sum(gt_opt_match / gt_num_is_present)
-  sums['pr_frac_opt'] = np.sum(pr_opt_match / pr_num_is_present)
+  opt_num_match = num_match_matrix[opt_gt, opt_pr]
+  sums['gt_frac_opt'] = np.sum(opt_num_match / gt_num_is_present[opt_gt])
+  sums['pr_frac_opt'] = np.sum(opt_num_match / pr_num_is_present[opt_pr])
 
-  sums['track_fn_cover'] = np.sum(1 - gt_opt_match / gt_num_is_present)
-  sums['track_fp_cover'] = np.sum(1 - pr_opt_match / pr_num_is_present)
-  sums['track_fn_cover_det'] = np.sum(1 - gt_sum_match / gt_num_is_present)
-  sums['track_fp_cover_det'] = np.sum(1 - pr_sum_match / pr_num_is_present)
-  sums['track_fn_cover_ass'] = np.sum((gt_sum_match - gt_opt_match) /
-                                      gt_num_is_present)
-  sums['track_fp_cover_ass'] = np.sum((pr_sum_match - pr_opt_match) /
-                                      pr_num_is_present)
-  sums['track_fn_cover_ass_indep'] = np.sum((gt_sum_match - gt_max_match) /
-                                            gt_num_is_present)
-  sums['track_fp_cover_ass_indep'] = np.sum((pr_sum_match - pr_max_match) /
-                                            pr_num_is_present)
-  sums['track_fn_cover_ass_joint'] = np.sum((gt_max_match - gt_opt_match) /
-                                            gt_num_is_present)
-  sums['track_fp_cover_ass_joint'] = np.sum((pr_max_match - pr_opt_match) /
-                                            pr_num_is_present)
+  sums['track_fn_cover'] = num_gt - sums['gt_frac_opt']
+  sums['track_fp_cover'] = num_pr - sums['pr_frac_opt']
+  sums['track_fn_cover_det'] = num_gt - sums['gt_frac_det']
+  sums['track_fp_cover_det'] = num_pr - sums['pr_frac_det']
+  sums['track_fn_cover_max'] = sums['gt_frac_det'] - sums['gt_frac_max']
+  sums['track_fp_cover_max'] = sums['pr_frac_det'] - sums['pr_frac_max']
+  sums['track_fn_cover_opt'] = sums['gt_frac_max'] - sums['gt_frac_opt']
+  sums['track_fp_cover_opt'] = sums['pr_frac_max'] - sums['pr_frac_opt']
 
-  # Find `union` component.
-  pair_to_match_index = dict(zip(map(tuple, match_pairs), itertools.count()))
-  opt_to_match_index = np.array(
-      [pair_to_match_index[tuple(pair)] for pair in opt_pairs], dtype=int)
-  opt_num_either_is_present = match_num_either_is_present[opt_to_match_index]
-  opt_gt_acc_cover = opt_num_match / opt_num_gt_is_present
-  opt_pr_acc_cover = opt_num_match / opt_num_pr_is_present
-  opt_gt_err_union = opt_num_match * (1 / opt_num_gt_is_present -
-                                      1 / opt_num_either_is_present)
-  opt_pr_err_union = opt_num_match * (1 / opt_num_pr_is_present -
-                                      1 / opt_num_either_is_present)
-  sums['track_fn_union'] = np.sum(opt_gt_err_union)
-  sums['track_fp_union'] = np.sum(opt_pr_err_union)
+  sums['track_fn_union'] = sums['gt_frac_opt'] - sums['track_tp_approx']
+  sums['track_fp_union'] = sums['pr_frac_opt'] - sums['track_tp_approx']
+  opt_union = (gt_num_is_present[opt_gt] + pr_num_is_present[opt_pr]
+               - opt_num_match)
+  sums['track_fn_union_det'] = np.sum(
+      (opt_num_match / gt_num_is_present[opt_gt]) *
+      ((pr_num_is_present[opt_pr] - pr_sum_match[opt_pr]) / opt_union))
+  sums['track_fn_union_ass'] = np.sum(
+      (opt_num_match / gt_num_is_present[opt_gt]) *
+      ((pr_sum_match[opt_pr] - opt_num_match) / opt_union))
+  sums['track_fp_union_det'] = np.sum(
+      (opt_num_match / pr_num_is_present[opt_pr]) *
+      ((gt_num_is_present[opt_gt] - gt_sum_match[opt_gt]) / opt_union))
+  sums['track_fp_union_ass'] = np.sum(
+      (opt_num_match / pr_num_is_present[opt_pr]) *
+      ((gt_sum_match[opt_gt] - opt_num_match) / opt_union))
 
-  # Decomposition of `union` into `union_det` and `union_ass`.
-  opt_num_gt_is_alone_with_match = (
-      match_num_gt_is_alone_with_match[opt_to_match_index])
-  opt_num_pr_is_alone_with_match = (
-      match_num_pr_is_alone_with_match[opt_to_match_index])
-  opt_num_gt_is_alone_sans_match = (
-      match_num_gt_is_alone_sans_match[opt_to_match_index])
-  opt_num_pr_is_alone_sans_match = (
-      match_num_pr_is_alone_sans_match[opt_to_match_index])
-  opt_gt_err_union_det = (
-      opt_gt_acc_cover * (opt_num_pr_is_alone_with_match /
-                          opt_num_either_is_present))
-  opt_pr_err_union_det = (
-      opt_pr_acc_cover * (opt_num_gt_is_alone_with_match /
-                          opt_num_either_is_present))
-  opt_gt_err_union_ass = (
-      opt_gt_acc_cover * (opt_num_pr_is_alone_sans_match /
-                          opt_num_either_is_present))
-  opt_pr_err_union_ass = (
-      opt_pr_acc_cover * (opt_num_gt_is_alone_sans_match /
-                          opt_num_either_is_present))
-  sums['track_fn_union_det'] = np.sum(opt_gt_err_union_det)
-  sums['track_fp_union_det'] = np.sum(opt_pr_err_union_det)
-  sums['track_fn_union_ass'] = np.sum(opt_gt_err_union_ass)
-  sums['track_fp_union_ass'] = np.sum(opt_pr_err_union_ass)
   return sums
 
 
@@ -611,11 +491,11 @@ def normalize_diagnostics(stats):
   error = pd.DataFrame(index=stats.index)
   error['det_fn'] = stats['track_fn_cover_det'] + stats['track_fp_union_det']
   error['det_fp'] = stats['track_fp_cover_det'] + stats['track_fn_union_det']
-  error['ass_split'] = (stats['track_fn_cover_ass_indep'] +
-                        stats['track_fp_cover_ass_joint'] +
+  error['ass_split'] = (stats['track_fn_cover_max'] +
+                        stats['track_fp_cover_opt'] +
                         stats['track_fp_union_ass'])
-  error['ass_merge'] = (stats['track_fp_cover_ass_indep'] +
-                        stats['track_fn_cover_ass_joint'] +
+  error['ass_merge'] = (stats['track_fp_cover_max'] +
+                        stats['track_fn_cover_opt'] +
                         stats['track_fn_union_ass'])
   error = error.div(stats['gt_num_tracks'] + stats['pr_num_tracks'], axis=0)
   metrics = metrics.join(error.add_prefix('ata_error_'))
@@ -623,9 +503,8 @@ def normalize_diagnostics(stats):
   error_gt = stats[[
       'track_fn_cover',
       'track_fn_cover_det',
-      'track_fn_cover_ass',
-      'track_fn_cover_ass_indep',
-      'track_fn_cover_ass_joint',
+      'track_fn_cover_max',
+      'track_fn_cover_opt',
       'track_fn_union',
       'track_fn_union_det',
       'track_fn_union_ass',
@@ -635,8 +514,8 @@ def normalize_diagnostics(stats):
   cause_gt = pd.DataFrame({
       'det_fn': error_gt['cover_det'],
       'det_fp': error_gt['union_det'],
-      'ass_split': error_gt['cover_ass_indep'],
-      'ass_merge': error_gt['cover_ass_joint'] + error_gt['union_ass'],
+      'ass_split': error_gt['cover_max'],
+      'ass_merge': error_gt['cover_opt'] + error_gt['union_ass'],
   })
   metrics = metrics.join(error_gt.add_prefix('atr_error_'))
   metrics = metrics.join(cause_gt.add_prefix('atr_error_'))
@@ -644,9 +523,8 @@ def normalize_diagnostics(stats):
   error_pr = stats[[
       'track_fp_cover',
       'track_fp_cover_det',
-      'track_fp_cover_ass',
-      'track_fp_cover_ass_indep',
-      'track_fp_cover_ass_joint',
+      'track_fp_cover_max',
+      'track_fp_cover_opt',
       'track_fp_union',
       'track_fp_union_det',
       'track_fp_union_ass',
@@ -656,8 +534,8 @@ def normalize_diagnostics(stats):
   cause_pr = pd.DataFrame({
       'det_fp': error_pr['cover_det'],
       'det_fn': error_pr['union_det'],
-      'ass_merge': error_pr['cover_ass_indep'],
-      'ass_split': error_pr['cover_ass_joint'] + error_pr['union_ass'],
+      'ass_merge': error_pr['cover_max'],
+      'ass_split': error_pr['cover_opt'] + error_pr['union_ass'],
   })
   metrics = metrics.join(error_pr.add_prefix('atp_error_'))
   metrics = metrics.join(cause_pr.add_prefix('atp_error_'))

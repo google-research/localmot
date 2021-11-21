@@ -60,8 +60,8 @@ def to_similarity(num_frames, gt_data, pr_data):
   pr_id_subset = [None for _ in range(num_frames)]
   similarity = [None for _ in range(num_frames)]
   for t in range(num_frames):
-    gt_id_subset[t] = gt_data_in_frame[t][:, TRACK_ID_COLUMN]
-    pr_id_subset[t] = pr_data_in_frame[t][:, TRACK_ID_COLUMN]
+    gt_id_subset[t] = gt_data_in_frame[t][:, TRACK_ID_COLUMN].astype(int)
+    pr_id_subset[t] = pr_data_in_frame[t][:, TRACK_ID_COLUMN].astype(int)
     similarity[t] = util.iou_xywh(gt_data_in_frame[t][:, BBOX_COLUMNS],
                                   pr_data_in_frame[t][:, BBOX_COLUMNS])
   return gt_id_subset, pr_id_subset, similarity

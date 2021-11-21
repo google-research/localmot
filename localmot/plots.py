@@ -252,16 +252,16 @@ def plot_decompose_ata_field(
       ],
       'atr': [
           'atr_error_cover_det',
-          'atr_error_cover_ass_indep',
-          'atr_error_cover_ass_joint',
+          'atr_error_cover_max',
+          'atr_error_cover_opt',
           'atr_error_union_ass',
           'atr_error_union_det',
           'atr_approx',
       ],
       'atp': [
           'atp_error_cover_det',
-          'atp_error_cover_ass_indep',
-          'atp_error_cover_ass_joint',
+          'atp_error_cover_max',
+          'atp_error_cover_opt',
           'atp_error_union_ass',
           'atp_error_union_det',
           'atp_approx',
@@ -278,16 +278,16 @@ def plot_decompose_ata_field(
       # Track recall.
       'atr_approx': None,
       'atr_error_cover_det': 'FN det',
-      'atr_error_cover_ass_indep': 'Split (contains multiple)',
-      'atr_error_cover_ass_joint': 'Merge (best match unavailable)',
+      'atr_error_cover_max': 'Split (contains multiple)',
+      'atr_error_cover_opt': 'Merge (best match unavailable)',
       'atr_error_union': 'union (FP, Merge)',
       'atr_error_union_det': 'FP det (in partner, not in track)',
       'atr_error_union_ass': 'Merge (in partner, not in track)',
       # Track precision.
       'atp_approx': None,
       'atp_error_cover_det': 'FP det',
-      'atp_error_cover_ass_indep': 'Merge (contains multiple)',
-      'atp_error_cover_ass_joint': 'Split (best match unavailable)',
+      'atp_error_cover_max': 'Merge (contains multiple)',
+      'atp_error_cover_opt': 'Split (best match unavailable)',
       'atp_error_union': 'union (FN, split)',
       'atp_error_union_det': 'FN det (in partner, not in track)',
       'atp_error_union_ass': 'Split (in partner, not in track)',
@@ -306,16 +306,16 @@ def plot_decompose_ata_field(
       # Track recall.
       'atr_approx': good[0],
       'atr_error_cover_det': bad[0],  # Det FN
-      'atr_error_cover_ass_indep': bad[2],  # Assoc split
-      'atr_error_cover_ass_joint': bad[3],  # Assoc merge
+      'atr_error_cover_max': bad[2],  # Assoc split
+      'atr_error_cover_opt': bad[3],  # Assoc merge
       'atr_error_union': bad[4],
       'atr_error_union_det': bad[1],  # Det FP
       'atr_error_union_ass': bad[3],  # Assoc merge
       # Track precision.
       'atp_approx': good[0],
       'atp_error_cover_det': bad[1],  # Det FP
-      'atp_error_cover_ass_indep': bad[3],  # Assoc merge
-      'atp_error_cover_ass_joint': bad[2],  # Assoc split
+      'atp_error_cover_max': bad[3],  # Assoc merge
+      'atp_error_cover_opt': bad[2],  # Assoc split
       'atp_error_union': bad[4],
       'atp_error_union_det': bad[0],  # Det FN
       'atp_error_union_ass': bad[2],  # Assoc split
